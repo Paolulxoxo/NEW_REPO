@@ -16,22 +16,24 @@
     <button id="run">Send now</button>
     <pre id="log"></pre>
 
-    <script>
-      const btn = document.getElementById("run");
-      const log = document.getElementById("log");
+    <<script>
+  const btn = document.getElementById("run");
+  const log = document.getElementById("log");
 
-      btn.onclick = async () => {
-        log.textContent = "Running…";
-        btn.disabled = true;
-        try {
-         const res = await fetch("/.netlify/functions/gsc-run-now");
-          log.textContent = res.ok ? "Done ✅ (check Telegram)" : `Failed ❌ (${res.status})`;
-        } catch (e) {
-          log.textContent = "Error: " + e.message;
-        } finally {
-          btn.disabled = false;
-        }
-      };
-    </script>
+  btn.onclick = async () => {
+    log.textContent = "Running…";
+    btn.disabled = true;
+
+    try {
+      const res = await fetch("/.netlify/functions/gsc-run-now", { method: "GET" });
+      const text = await res.text(); // <-- read error body
+      log.textContent = res.ok ? `Done ✅\n\n${text}` : `Failed ❌ (${res.status})\n\n${text}`;
+    } catch (e) {
+      log.textContent = "Error: " + e.message;
+    } finally {
+      btn.disabled = false;
+    }
+  };
+</script>
   </body>
 </html>
