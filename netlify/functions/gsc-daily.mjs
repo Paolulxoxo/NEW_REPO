@@ -85,8 +85,11 @@ async function queryTop(client, siteUrl, date, dimension) {
 }
 
 export default async function handler() {
+    await telegramSend(`Debug: function ran at ${new Date().toISOString()}`);
   const startAt = mustGetEnv("START_AT_UTC");
-  if (Date.now() < Date.parse(startAt)) return;
+const bypass = process.env.BYPASS_START_GUARD === "1";
+if (!bypass && Date.now() < Date.parse(startAt)) return;
+
 
   const sites = JSON.parse(mustGetEnv("SITES_URLS"));
   const client = await getClient();
