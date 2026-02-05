@@ -85,18 +85,36 @@ export default async function handler() {
   const sites = JSON.parse(mustGetEnv("SITES_URLS"));
   const client = getClient();
 
-// GSC API lags behind the UI. Use the latest "stable" day: 3 days ago.
-const end = new Date();
-end.setUTCDate(end.getUTCDate() - 3);
+  /**
+   * Fixed 7-day reporting blocks starting Feb 6, 2026:
+   * Feb 6–12, Feb 13–19, Feb 20–26, Feb 27–Mar 5, ...
+   *
+   * We also apply a 3-day lag buffer because GSC API data is delayed vs UI.
+   */
+  const ANCHOR_START_UTC = new Date("2026-02-06T00:00:00Z");
+  const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-const startDate = isoDate(end);
-const endDate = isoDate(end);
+  const ref = new Date();
+  ref.setUTCDate(ref.getUTCDate() - 3); // lag buffer
 
-let msg = `<b>GSC Daily Snapshot (API)</b>\n`;
-msg += `🕒 Time (IST): ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}\n`;
-msg += `<b>Date:</b> ${startDate}\n\n`;
+  const daysSinceAnchor = Math.floor((ref - ANCHOR_START_UTC) / MS_PER_DAY);
+  const completedBlocks = Math.floor(daysSinceAnchor / 7);
 
+  const start = new Date(ANCHOR_START_UTC);
+  start.setUTCDate(start.getUTCDate() + completedBlocks * 7);
 
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 6);
+
+  const startDate = isoDate(start);
+  const endDate = isoDate(end);
+
+  // ONE message only
+  let msg = `<b>GSC Weekly Snapshot (7 days)</b>\n`;
+  msg += `🕒 Generated (IST): ${new Date().toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata"
+  })}\n`;
+  msg += `<b>Period:</b> ${startDate} → ${endDate}\n\n`;
 
   for (const site of sites) {
     try {
