@@ -85,18 +85,18 @@ export default async function handler() {
   const sites = JSON.parse(mustGetEnv("SITES_URLS"));
   const client = getClient();
 
-  // Rolling window (best match to GSC "last 24 hours")
-  const end = new Date();
-  const start = new Date();
-  start.setUTCDate(start.getUTCDate() - 2);
+// GSC API lags behind the UI. Use the latest "stable" day: 3 days ago.
+const end = new Date();
+end.setUTCDate(end.getUTCDate() - 3);
 
-  const startDate = isoDate(start);
-  const endDate = isoDate(end);
+const startDate = isoDate(end);
+const endDate = isoDate(end);
 
-  // Build ONE message only
-  let msg = `<b>GSC Update (Last 24h-ish)</b>\n`;
-  msg += `🕒 Time (IST): ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}\n`;
-  msg += `<b>Range:</b> ${startDate} → ${endDate}\n\n`;
+let msg = `<b>GSC Daily Snapshot (API)</b>\n`;
+msg += `🕒 Time (IST): ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}\n`;
+msg += `<b>Date:</b> ${startDate}\n\n`;
+
+
 
   for (const site of sites) {
     try {
