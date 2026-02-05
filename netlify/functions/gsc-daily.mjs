@@ -1,9 +1,14 @@
 import { google } from "googleapis";
 
+/**
+ * Netlify scheduled function
+ * 09:30 IST = 04:00 UTC
+ */
 export const config = {
-  // 09:30 IST = 04:00 UTC
   schedule: "0 4 * * *"
 };
+
+/* ---------- helpers ---------- */
 
 function mustGetEnv(name) {
   const v = process.env[name];
@@ -36,23 +41,28 @@ async function telegramSend(text) {
   }
 }
 
-function getAuth() {
+/* ---------- GSC ---------- */
+
+function getClient() {
   const sa = JSON.parse(mustGetEnv("GOOGLE_SERVICE_ACCOUNT_JSON"));
-  return new google.auth.JWT({
+
+  const auth = new google.auth.JWT({
     email: sa.client_email,
     key: sa.private_key,
     scopes: ["https://www.googleapis.com/auth/webmasters.readonly"]
   });
+
+  return google.searchconsole({ version: "v1", auth });
 }
 
-function getClient() {
-  return google.searchconsole({ version: "v1", auth: getAuth() });
-}
-
-async function queryTotals(client, siteUrl, date) {
+async function queryTotals(client, siteUrl, startDate, endDate) {
   const res = await client.searchanalytics.query({
     siteUrl,
-    requestBody: { startDate: date, endDate: date }
+    requestBody: {
+      startDate,
+      endDate,
+      type: "web"
+    }
   });
 
   const r = res.data.rows?.[0] ?? {};
@@ -64,8 +74,10 @@ async function queryTotals(client, siteUrl, date) {
   };
 }
 
+/* ---------- MAIN ---------- */
+
 export default async function handler() {
-  // Start guard (for your Feb 6 start)
+  // Optional start guard
   const startAt = mustGetEnv("START_AT_UTC");
   const bypass = process.env.BYPASS_START_GUARD === "1";
   if (!bypass && Date.now() < Date.parse(startAt)) return;
@@ -73,19 +85,22 @@ export default async function handler() {
   const sites = JSON.parse(mustGetEnv("SITES_URLS"));
   const client = getClient();
 
-  // Use "yesterday" as stable daily snapshot (GSC is delayed anyway)
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() - 1);
-  const date = isoDate(d);
+  // Rolling window (best match to GSC "last 24 hours")
+  const end = new Date();
+  const start = new Date();
+  start.setUTCDate(start.getUTCDate() - 2);
 
-  // ONE message only
-  let msg = `<b>GSC Update (Last 24h)</b>\n`;
+  const startDate = isoDate(start);
+  const endDate = isoDate(end);
+
+  // Build ONE message only
+  let msg = `<b>GSC Update (Last 24h-ish)</b>\n`;
   msg += `🕒 Time (IST): ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}\n`;
-  msg += `<b>Date:</b> ${date}\n\n`;
+  msg += `<b>Range:</b> ${startDate} → ${endDate}\n\n`;
 
   for (const site of sites) {
     try {
-      const totals = await queryTotals(client, site, date);
+      const totals = await queryTotals(client, site, startDate, endDate);
 
       msg += `📊 <b>${site}</b>\n`;
       msg += `Impressions: ${totals.impressions}\n`;
