@@ -56,22 +56,36 @@ function getClient() {
 }
 
 async function queryTotals(client, siteUrl, startDate, endDate) {
+  // Query by date and sum results to get reliable totals
   const res = await client.searchanalytics.query({
     siteUrl,
     requestBody: {
       startDate,
       endDate,
-      type: "web"
+      type: "web",
+      dimensions: ["date"],
+      rowLimit: 1000
     }
   });
 
-  const r = res.data.rows?.[0] ?? {};
-  return {
-    clicks: r.clicks ?? 0,
-    impressions: r.impressions ?? 0,
-    ctr: r.ctr ?? 0,
-    position: r.position ?? 0
-  };
+  const rows = res.data.rows ?? [];
+  let clicks = 0;
+  let impressions = 0;
+  let positionImprWeightedSum = 0;
+
+  for (const r of rows) {
+    clicks += r.clicks ?? 0;
+    impressions += r.impressions ?? 0;
+    // position is an average; weight it by impressions to combine days properly
+    const pos = r.position ?? 0;
+    const impr = r.impressions ?? 0;
+    positionImprWeightedSum += pos * impr;
+  }
+
+  const ctr = impressions > 0 ? clicks / impressions : 0;
+  const position = impressions > 0 ? positionImprWeightedSum / impressions : 0;
+
+  return { clicks, impressions, ctr, position };
 }
 
 /* ---------- MAIN ---------- */
