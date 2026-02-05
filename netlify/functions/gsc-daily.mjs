@@ -1,36 +1,102 @@
+import { google } from "googleapis";
+
+export const config = {
+  // 09:30 IST = 04:00 UTC
+  schedule: "0 4 * * *"
+};
+
+function mustGetEnv(name) {
+  const v = process.env[name];
+  if (!v) throw new Error(`Missing env var: ${name}`);
+  return v;
+}
+
+function isoDate(d) {
+  return d.toISOString().slice(0, 10);
+}
+
+async function telegramSend(text) {
+  const token = mustGetEnv("TELEGRAM_BOT_TOKEN");
+  const chatId = mustGetEnv("TELEGRAM_CHAT_ID");
+
+  const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text,
+      parse_mode: "HTML",
+      disable_web_page_preview: true
+    })
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Telegram error: ${body}`);
+  }
+}
+
+function getAuth() {
+  const sa = JSON.parse(mustGetEnv("GOOGLE_SERVICE_ACCOUNT_JSON"));
+  return new google.auth.JWT({
+    email: sa.client_email,
+    key: sa.private_key,
+    scopes: ["https://www.googleapis.com/auth/webmasters.readonly"]
+  });
+}
+
+function getClient() {
+  return google.searchconsole({ version: "v1", auth: getAuth() });
+}
+
+async function queryTotals(client, siteUrl, date) {
+  const res = await client.searchanalytics.query({
+    siteUrl,
+    requestBody: { startDate: date, endDate: date }
+  });
+
+  const r = res.data.rows?.[0] ?? {};
+  return {
+    clicks: r.clicks ?? 0,
+    impressions: r.impressions ?? 0,
+    ctr: r.ctr ?? 0,
+    position: r.position ?? 0
+  };
+}
+
 export default async function handler() {
+  // Start guard (for your Feb 6 start)
   const startAt = mustGetEnv("START_AT_UTC");
   const bypass = process.env.BYPASS_START_GUARD === "1";
   if (!bypass && Date.now() < Date.parse(startAt)) return;
 
   const sites = JSON.parse(mustGetEnv("SITES_URLS"));
-  const client = await getClient();
+  const client = getClient();
 
-  // GSC is usually delayed; we use "yesterday" as a stable daily snapshot
+  // Use "yesterday" as stable daily snapshot (GSC is delayed anyway)
   const d = new Date();
   d.setUTCDate(d.getUTCDate() - 1);
   const date = isoDate(d);
 
-  // Build ONE message
-  let finalMsg = `<b>GSC Update (Last 24h)</b>\n`;
-  finalMsg += `🕒 Time (IST): ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}\n`;
-  finalMsg += `<b>Date:</b> ${date}\n\n`;
+  // ONE message only
+  let msg = `<b>GSC Update (Last 24h)</b>\n`;
+  msg += `🕒 Time (IST): ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}\n`;
+  msg += `<b>Date:</b> ${date}\n\n`;
 
   for (const site of sites) {
     try {
       const totals = await queryTotals(client, site, date);
 
-      finalMsg += `📊 <b>${site}</b>\n`;
-      finalMsg += `Impressions: ${totals.impressions}\n`;
-      finalMsg += `Clicks: ${totals.clicks}\n`;
-      finalMsg += `CTR: ${(totals.ctr * 100).toFixed(2)}%\n`;
-      finalMsg += `Avg Position: ${totals.position.toFixed(2)}\n\n`;
+      msg += `📊 <b>${site}</b>\n`;
+      msg += `Impressions: ${totals.impressions}\n`;
+      msg += `Clicks: ${totals.clicks}\n`;
+      msg += `CTR: ${(totals.ctr * 100).toFixed(2)}%\n`;
+      msg += `Avg Position: ${totals.position.toFixed(2)}\n\n`;
     } catch (err) {
-      finalMsg += `❌ <b>${site}</b>\n`;
-      finalMsg += `Error: ${err?.message || String(err)}\n\n`;
+      msg += `❌ <b>${site}</b>\n`;
+      msg += `Error: ${err?.message || String(err)}\n\n`;
     }
   }
 
-  // SEND ONLY ONCE
-  await telegramSend(finalMsg);
+  await telegramSend(msg);
 }

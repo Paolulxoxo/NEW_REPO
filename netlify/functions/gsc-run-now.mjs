@@ -1,6 +1,10 @@
 import runDaily from "./gsc-daily.mjs";
 
 export const handler = async () => {
-  await runDaily();
-  return { statusCode: 200, body: "OK" };
+  try {
+    await runDaily();
+    return { statusCode: 200, body: "OK" };
+  } catch (e) {
+    return { statusCode: 500, body: e?.stack || String(e) };
+  }
 };
